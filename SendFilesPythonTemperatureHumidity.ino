@@ -1,0 +1,160 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+#include "DHT.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+const char* WIFI_SSID = "jpi-router";
+const char* WIFI_PASSWORD = "jianwenwangbo";
+
+const char* SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbzKULa_9nd7Iv4lQBizeVBBck5I7HoaWv5icTslf2QPuuQf98mDpw-aRxh1rhZNi0E/exec";
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+#define DHTPIN 5
+#define DHTTYPE DHT22
+
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &Wire,
+  OLED_RESET
+);
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  
+  // Start I2C
+  Wire.begin(21, 22);
+
+  // Start DHT22
+  dht.begin();
+
+  // Initialize OLED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println("SSD1306 allocation failed");
+    while (true);
+  }
+
+  //displaying wifi connectoin on oled
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
+  
+  Serial.println("connecting to wifi");
+
+  //animation for connecting to internet
+  int dot = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    display.fillRect(0, 16, 128, 8, BLACK);
+    display.setCursor(0, 16);
+
+    display.print("Connecting");
+    
+    for (int i = 0; i < dot; i++) {
+        display.print(".");
+    }
+
+    display.display();
+
+    dot++;
+    if (dot > 3) {
+        dot = 0;
+    }
+
+  }
+
+}
+float sensorValue = 23.4;
+
+void loop() {
+
+  // Read humidity and temperature
+  float humidity = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" C");
+
+  Serial.print("Temperature: ");
+  float fahre = ((temperature *(9.0/5)) +32.0);
+  Serial.print(fahre);
+  Serial.println(" F");
+
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.println(" %");
+
+  // OLED output
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+
+  display.print(fahre);
+  display.println(" F");
+  
+  display.print(humidity);
+  display.println(" %");
+  //----------------------------------------------
+
+  // Check if readings failed
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Failed to read from DHT22!");
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("DHT22 Error");
+    display.display();
+
+    delay(2000);
+    return;
+  }
+
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient http;
+    String url = String(SCRIPT_URL) +
+                 "?temperature=" + String(fahre) + "&humidity=" + String(humidity);
+
+    http.begin(url);
+
+    int httpCode = http.GET();
+
+    Serial.print("HTTP response: ");
+    if(httpCode == 200 || httpCode == 302){
+      display.println("Online");
+    }
+    else{
+      display.println("Offline");
+    }
+    Serial.println(httpCode);
+
+    http.end();
+  }
+
+  // Serial output
+
+
+  display.display();
+
+  // DHT22 should not be read too frequently
+  delay(5000);
+}
